@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atom Clicker Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        #gameContainer {
+            text-align: center;
+        }
+        canvas {
+            border: 1px solid #000;
+            background-color: #fff;
+            cursor: none;
+        }
+        #stats, #shop, #upgrades {
+            margin-top: 10px;
+        }
+        .shop-section {
+            margin-top: 10px;
+            border: 1px solid #ccc;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="400" height="400"></canvas>
+        <div id="stats">
+            <p>Money: $<span id="money">0</span> | Atoms: <span id="atomCount">0</span> of <span id="maxAtoms">10</span></p>
+        </div>
+        <div id="shop">
+            <div class="shop-section">
+                <h3>Visual Upgrades</h3>
+                <div id="colorShop"></div>
+                <div id="shapeShop"></div>
+            </div>
+            <div class="shop-section">
+                <h3>Functional Upgrades</h3>
+                <div id="upgradeShop"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const moneyDisplay = document.getElementById('money');
+        const atomCountDisplay = document.getElementById('atomCount');
+        const maxAtomsDisplay = document.getElementById('maxAtoms');
+        const colorShopDiv = document.getElementById('colorShop');
+        const shapeShopDiv = document.getElementById('shapeShop');
+        const upgradeShopDiv = document.getElementById('upgradeShop');
+
+        let atoms = [];
+        let money = 0;
+        let colors = ['blue'];
+        let shapes = ['circle'];
+        let lastSplitTime = Date.now();
+        let cursorSize = 20;
+        let cursorUpgradeLevel = 0;
+        let cursorX = 0;
+        let cursorY = 0;
+        let maxAtoms = 10;
+        let maxAtomUpgradeLevel = 0;
+
+        let availableColors = [
+            { name: 'red', price: 10, value: 2 },
+            { name: 'yellow', price: 20, value: 3 },
+            { name: 'green', price: 30, value: 4 },
+            { name: 'purple', price: 40, value: 5 },
+            { name: 'orange', price: 50, value: 6 },
+            { name: 'pink', price: 60, value: 7 },
+            { name: 'cyan', price: 70, value: 8 },
+            { name: 'magenta', price: 80, value: 9 },
+            { name: 'lime', price: 90, value: 10 },
+            { name: 'indigo', price: 100, value: 11 },
+            { name: 'teal', price: 110, value: 12 },
+            { name: 'brown', price: 120, value: 13 },
+            { name: 'maroon', price: 130, value: 14 }
+        ];
+
+        let availableShapes = [
+            { name: 'circle', price: 10, speed: 1 },
+            { name: 'square', price: 20, speed: 1.2 },
+            { name: 'triangle', price: 30, speed: 1.4 },
+            { name: 'pentagon', price: 40, speed: 1.6 },
+            { name: 'hexagon', price: 50, speed: 1.8 },
+            { name: 'star', price: 60, speed: 2 },
+            { name: 'diamond', price: 70, speed: 2.2 },
+            { name: 'octagon', price: 80, speed: 2.4 },
+            { name: 'heart', price: 90, speed: 2.6 },
+            { name: 'crescent', price: 100, speed: 2.8 }
+        ];
+
+        class Atom {
+            constructor(x, y, color, shape) {
+                this.x = x;
+                this.y = y;
+                this.radius = 10;
+                this.color = color;
+                this.shape = shape;
+                const shapeInfo = availableShapes.find(s => s.name === shape);
+                const speed = shapeInfo ? shapeInfo.speed : 1;
+                this.dx = (Math.random() - 0.5) * 2 * speed;
+                this.dy = (Math.random() - 0.5) * 2 * speed;
+            }
+
+            draw() {
+                ctx.beginPath();
+                switch (this.shape) {
+                    case 'circle':
+                        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                        break;
+                    case 'square':
+                        ctx.rect(this.x - this.radius, this.y - this.radius, this.radius * 2, this.radius * 2);
+                        break;
+                    case 'triangle':
+                        ctx.moveTo(this.x, this.y - this.radius);
+                        ctx.lineTo(this.x - this.radius, this.y + this.radius);
+                        ctx.lineTo(this.x + this.radius, this.y + this.radius);
+                        ctx.closePath();
+                        break;
+                    // Add more shape drawing logic here
+                    default:
+                        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                }
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.closePath();
+            }
+
+            update() {
+                this.x += this.dx;
+                this.y += this.dy;
+
+                if (this.x + this.radius > canvas.width || this.x - this.radius < 0) {
+                    this.dx = -this.dx;
+                }
+                if (this.y + this.radius > canvas.height || this.y - this.radius < 0) {
+                    this.dy = -this.dy;
+                }
+
+                this.draw();
+            }
+
+            split() {
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                const shape = shapes[Math.floor(Math.random() * shapes.length)];
+                return new Atom(this.x, this.y, color, shape);
+            }
+        }
+
+        function createAtom() {
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * canvas.height;
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            const shape = shapes[Math.floor(Math.random() * shapes.length)];
+            return new Atom(x, y, color, shape);
+        }
+
+        function splitAtoms() {
+            if (atoms.length >= maxAtoms) return;
+            const newAtoms = [];
+            atoms.forEach(atom => {
+                if (atoms.length + newAtoms.length < maxAtoms) {
+                    newAtoms.push(atom.split());
+                }
+            });
+            atoms = atoms.concat(newAtoms);
+            updateAtomCount();
+        }
+
+        function updateMoney() {
+            moneyDisplay.textContent = money;
+            updateShop();
+        }
+
+        function updateAtomCount() {
+            atomCountDisplay.textContent = atoms.length;
+            maxAtomsDisplay.textContent = maxAtoms;
+            if (atoms.length >= maxAtoms) {
+                loseGame();
+            }
+        }
+
+        function loseGame() {
+            alert(`Game Over! You reached the maximum of ${maxAtoms} atoms.`);
+            money = 0;
+            atoms = [createAtom()];
+            updateMoney();
+            updateAtomCount();
+        }
+
+        function updateShop() {
+            updateColorShop();
+            updateShapeShop();
+            updateUpgradeShop();
+        }
+
+        function updateColorShop() {
+            colorShopDiv.innerHTML = '';
+            availableColors.forEach(color => {
+                if (!colors.includes(color.name)) {
+                    const button = document.createElement('button');
+                    button.textContent = `Buy ${color.name} ($${color.price})`;
+                    button.disabled = money < color.price;
+                    button.onclick = () => buyColor(color);
+                    colorShopDiv.appendChild(button);
+                }
+            });
+        }
+
+        function updateShapeShop() {
+            shapeShopDiv.innerHTML = '';
+            availableShapes.forEach(shape => {
+                if (!shapes.includes(shape.name)) {
+                    const button = document.createElement('button');
+                    button.textContent = `Buy ${shape.name} ($${shape.price})`;
+                    button.disabled = money < shape.price;
+                    button.onclick = () => buyShape(shape);
+                    shapeShopDiv.appendChild(button);
+                }
+            });
+        }
+
+        function updateUpgradeShop() {
+            upgradeShopDiv.innerHTML = '';
+            
+            // Cursor size upgrade
+            if (cursorUpgradeLevel < 10) {
+                const cursorUpgradeCost = Math.floor(5 * Math.pow(1.5, cursorUpgradeLevel));
+                const cursorButton = document.createElement('button');
+                cursorButton.textContent = `Upgrade cursor (Level ${cursorUpgradeLevel + 1}) - $${cursorUpgradeCost}`;
+                cursorButton.disabled = money < cursorUpgradeCost;
+                cursorButton.onclick = () => upgradeCursor(cursorUpgradeCost);
+                upgradeShopDiv.appendChild(cursorButton);
+            }
+
+            // Max atoms upgrade
+            const maxAtomUpgradeCost = Math.floor(15 * Math.pow(2, maxAtomUpgradeLevel));
+            const maxAtomButton = document.createElement('button');
+            maxAtomButton.textContent = `Increase max atoms (Current: ${maxAtoms}) - $${maxAtomUpgradeCost}`;
+            maxAtomButton.disabled = money < maxAtomUpgradeCost;
+            maxAtomButton.onclick = () => upgradeMaxAtoms(maxAtomUpgradeCost);
+            upgradeShopDiv.appendChild(maxAtomButton);
+        }
+
+        function buyColor(color) {
+            if (money >= color.price) {
+                money -= color.price;
+                colors.push(color.name);
+                updateMoney();
+            }
+        }
+
+        function buyShape(shape) {
+            if (money >= shape.price) {
+                money -= shape.price;
+                shapes.push(shape.name);
+                updateMoney();
+            }
+        }
+
+        function upgradeCursor(cost) {
+            if (money >= cost) {
+                money -= cost;
+                cursorUpgradeLevel++;
+                cursorSize = 20 + (cursorUpgradeLevel * 20);
+                updateMoney();
+            }
+        }
+
+        function upgradeMaxAtoms(cost) {
+            if (money >= cost) {
+                money -= cost;
+                maxAtomUpgradeLevel++;
+                maxAtoms = 10 * Math.pow(2, maxAtomUpgradeLevel);
+                updateMoney();
+                updateAtomCount();
+            }
+        }
+function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const currentTime = Date.now();
+            if (currentTime - lastSplitTime > 5000) {
+                splitAtoms();
+                lastSplitTime = currentTime;
+            }
+
+            atoms.forEach(atom => atom.update());
+
+            // Draw cursor
+            ctx.fillStyle = 'rgba(255, 192, 203, 0.5)';
+            ctx.fillRect(cursorX - cursorSize / 2, cursorY - cursorSize / 2, cursorSize, cursorSize);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        canvas.addEventListener('mousemove', (event) => {
+            const rect = canvas.getBoundingClientRect();
+            cursorX = event.clientX - rect.left;
+            cursorY = event.clientY - rect.top;
+        });
+
+        canvas.addEventListener('click', (event) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+
+            atoms = atoms.filter(atom => {
+                const dx = Math.abs(x - atom.x);
+                const dy = Math.abs(y - atom.y);
+                if (dx <= cursorSize / 2 && dy <= cursorSize / 2) {
+                    const colorInfo = availableColors.find(c => c.name === atom.color);
+                    const value = colorInfo ? colorInfo.value : 1;
+                    money += value;
+                    updateMoney();
+                    return false;
+                }
+                return true;
+            });
+            updateAtomCount();
+        });
+
+        // Initialize the game
+        atoms.push(createAtom());
+        updateShop();
+        updateAtomCount();
+        gameLoop();
+    </script>
+</body>
+</html>
